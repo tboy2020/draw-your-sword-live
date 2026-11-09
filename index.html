@@ -67,6 +67,8 @@ input#codeIn{letter-spacing:8px; text-transform:uppercase; font-weight:900; font
 footer{color:var(--ink-soft); font-size:12px; margin-top:22px; opacity:.85;}
 a{color:var(--ink-soft);}
 .timer{font-weight:900; font-size:22px; color:var(--gold);}
+.hearbtn{margin-top:10px; font-family:var(--font); font-weight:800; font-size:15px; border:0; cursor:pointer; color:#2a2208; background:rgba(244,196,48,.92); border-radius:999px; padding:9px 18px; box-shadow:0 4px 0 #b9860b;}
+.hearbtn:active{transform:translateY(2px); box-shadow:0 2px 0 #b9860b;}
 </style>
 </head>
 <body>
@@ -122,7 +124,7 @@ a{color:var(--ink-soft);}
   <!-- HOST PLAY -->
   <section id="hostPlay" class="screen">
     <div class="topbar"><span class="pill" id="hRoom">Room</span><span class="pill" id="hProg">Q 1/10</span></div>
-    <div class="qcard"><div class="qtext" id="hQ">…</div><div class="qref" id="hRef"></div></div>
+    <div class="qcard"><div class="qtext" id="hQ">…</div><div class="qref" id="hRef"></div><button class="hearbtn" onclick="hearQ('h')">🔊 Hear it</button></div>
     <div id="hOpts" class="opts"></div>
     <div class="big-feed" id="hStatus"><span class="count" id="hAnsCount">0</span> / <span id="hPlTotal">0</span> answered</div>
     <div id="hReveal" style="display:none"><div class="lb" id="hLB"></div></div>
@@ -132,7 +134,7 @@ a{color:var(--ink-soft);}
   <!-- GUEST PLAY -->
   <section id="guestPlay" class="screen">
     <div class="topbar"><span class="pill" id="gName">You</span><span class="pill" id="gProg">Q 1/10</span><span class="pill" id="gScore">0 pts</span></div>
-    <div class="qcard"><div class="qtext" id="gQ">…</div><div class="qref" id="gRef"></div></div>
+    <div class="qcard"><div class="qtext" id="gQ">…</div><div class="qref" id="gRef"></div><button class="hearbtn" onclick="hearQ('g')">🔊 Hear it</button></div>
     <div id="gOpts" class="opts"></div>
     <div class="big-feed" id="gFeed"></div>
     <div id="gReveal" style="display:none"><div class="lb" id="gLB"></div></div>
@@ -180,6 +182,10 @@ function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
 function shuffle(a){ a=a.slice(); for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;} return a; }
 var COLORS=["#f4c430","#36c08a","#4aa3ff","#ff6b8a","#b084ff","#ff9f43","#2dd4bf","#f06595","#ffd166","#9b5de5","#00bbf9","#fb5607"];
 var OPTCLS=["a","b","c","d"], OPTLAB=["A","B","C","D"];
+var VOICES=[]; function loadVoices(){ try{VOICES=window.speechSynthesis.getVoices()||[];}catch(e){} }
+if('speechSynthesis' in window){ loadVoices(); try{window.speechSynthesis.onvoiceschanged=loadVoices;}catch(e){} }
+function speak(text){ try{ if(!('speechSynthesis' in window)||!text)return; window.speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(text); u.rate=0.98; u.pitch=1.03; var v=VOICES.filter(function(x){return /en[-_]/i.test(x.lang);})[0]; if(v)u.voice=v; window.speechSynthesis.speak(u); }catch(e){} }
+function hearQ(which){ var el=document.getElementById(which+'Q'); var qt=el?el.textContent:''; var opts=Array.prototype.map.call(document.querySelectorAll('#'+which+'Opts .opt'),function(b){return b.textContent.replace(/\s+/g,' ').trim();}).join('. '); speak(qt+(opts?'.  '+opts:'')); }
 
 /* ---------- Firebase ---------- */
 var db=null, FBOK=false;
