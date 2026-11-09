@@ -1,0 +1,16 @@
+{
+  "name": "Draw Your Sword — Live",
+  "short_name": "Sword Live",
+  "description": "Live multiplayer Bible quiz — a host starts a room and up to ~20 people join from their own phones. Kahoot-style, with a live leaderboard.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1b1446",
+  "theme_color": "#1b1446",
+  "categories": ["education", "games"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
