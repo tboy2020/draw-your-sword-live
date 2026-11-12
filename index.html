@@ -25,6 +25,7 @@ body{font-family:var(--font); color:var(--ink); text-align:center; overflow-x:hi
 .wrap{max-width:720px; margin:0 auto; padding:18px 16px 40px;}
 .screen{display:none;} .screen.active{display:block; animation:pop .25s ease;}
 @keyframes pop{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
+@keyframes confFall{to{transform:translateY(106vh) rotate(720deg); opacity:.9;}}
 h1.brand{font-size:clamp(30px,8vw,52px); line-height:1; margin:.1em 0 0; background:linear-gradient(90deg,#fff,#ffe9a8,#f4c430,#fff); -webkit-background-clip:text; background-clip:text; color:transparent;}
 .sword{font-size:clamp(46px,14vw,86px); line-height:1; margin:6px 0 0;}
 .tag{color:var(--gold); font-weight:800; letter-spacing:2px; font-size:14px; text-transform:uppercase;}
@@ -58,7 +59,7 @@ input#codeIn{letter-spacing:8px; text-transform:uppercase; font-weight:900; font
 .big-feed{font-size:26px; font-weight:900; margin:10px 0;}
 .big-feed.ok{color:#9af5cf;} .big-feed.no{color:#ffb3c4;}
 .muted{color:var(--ink-soft); font-size:14px;} .small{font-size:13px;}
-.topbar{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;}
+.topbar{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;}
 .pill{display:inline-block; background:rgba(255,255,255,.1); border-radius:999px; padding:6px 13px; font-weight:800; font-size:14px; margin:3px;}
 .steps{text-align:left; line-height:1.5; font-size:15px;}
 .steps li{margin:8px 0;} code{background:rgba(0,0,0,.3); padding:2px 7px; border-radius:6px; font-size:13px; word-break:break-all;}
@@ -123,11 +124,12 @@ a{color:var(--ink-soft);}
 
   <!-- HOST PLAY -->
   <section id="hostPlay" class="screen">
-    <div class="topbar"><span class="pill" id="hRoom">Room</span><span class="pill" id="hProg">Q 1/10</span></div>
+    <div class="topbar"><span class="pill" id="hRoom">Room</span><button class="hearbtn voicetog" style="margin-top:0" onclick="toggleVoice()">🔊 Voice on</button><span class="pill" id="hProg">Q 1/10</span></div>
     <div class="qcard"><div class="qtext" id="hQ">…</div><div class="qref" id="hRef"></div><button class="hearbtn" onclick="hearQ('h')">🔊 Hear it</button></div>
     <div id="hOpts" class="opts"></div>
     <div class="big-feed" id="hStatus"><span class="count" id="hAnsCount">0</span> / <span id="hPlTotal">0</span> answered</div>
     <div id="hReveal" style="display:none"><div class="lb" id="hLB"></div></div>
+    <div id="hLockHint" class="muted" style="display:none; margin:4px 0 2px">🔊 Listen to the answer…</div>
     <button class="btn big" id="hAction" onclick="hostAction()">Reveal answer ▶️</button>
   </section>
 
@@ -184,8 +186,107 @@ var COLORS=["#f4c430","#36c08a","#4aa3ff","#ff6b8a","#b084ff","#ff9f43","#2dd4bf
 var OPTCLS=["a","b","c","d"], OPTLAB=["A","B","C","D"];
 var VOICES=[]; function loadVoices(){ try{VOICES=window.speechSynthesis.getVoices()||[];}catch(e){} }
 if('speechSynthesis' in window){ loadVoices(); try{window.speechSynthesis.onvoiceschanged=loadVoices;}catch(e){} }
-function speak(text){ try{ if(!('speechSynthesis' in window)||!text)return; window.speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(text); u.rate=0.98; u.pitch=1.03; var v=VOICES.filter(function(x){return /en[-_]/i.test(x.lang);})[0]; if(v)u.voice=v; window.speechSynthesis.speak(u); }catch(e){} }
-function hearQ(which){ var el=document.getElementById(which+'Q'); var qt=el?el.textContent:''; var opts=Array.prototype.map.call(document.querySelectorAll('#'+which+'Opts .opt'),function(b){return b.textContent.replace(/\s+/g,' ').trim();}).join('. '); speak(qt+(opts?'.  '+opts:'')); }
+function pickVoice(u){ var v=VOICES.filter(function(x){return /en[-_]/i.test(x.lang);})[0]; if(v)u.voice=v; }
+/* Turn written text into something speech reads naturally: a fill-in-the-blank
+   "___" must NOT be read as "underscore underscore underscore". We swap it for a
+   comma so the reader just PAUSES silently where the missing word goes, then tidy
+   any punctuation the swap bumped into (e.g. "my , ." -> "my."). */
+function sayable(s){
+  return String(s==null?'':s)
+    .replace(/_{2,}/g,' , ')
+    .replace(/\s+([,.;:!?])/g,'$1')
+    .replace(/,\s*([.!?;:])/g,'$1')
+    .replace(/\s+/g,' ').trim();
+}
+/* SEQ is a generation token: every speak/speakSequence/shutUp bumps it, so an
+   older reading's callbacks bail and exactly one reading is ever live. */
+var SEQ=0;
+function speak(text){ try{ if(!('speechSynthesis' in window))return; var say=sayable(text); if(!say)return; SEQ++; window.speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(say); u.rate=0.98; u.pitch=1.03; pickVoice(u); window.speechSynthesis.speak(u); }catch(e){} }
+/* Read parts one at a time, slowly, with a real pause between each — so a child
+   hears the question, then every choice, unhurried. onDone fires when finished
+   (or superseded/failed), used to un-grey the host's Next button. */
+function speakSequence(parts, rate, gapMs, onDone){
+  var fired=false; function done(){ if(fired)return; fired=true; if(onDone){ try{onDone();}catch(e){} } }
+  parts=(parts||[]).map(function(p){return sayable(p);}).filter(Boolean);
+  if(!('speechSynthesis' in window)||!parts.length){ done(); return; }
+  rate=rate||0.8; gapMs=(gapMs==null?750:gapMs);
+  var tok=++SEQ, i=0;
+  try{window.speechSynthesis.cancel();}catch(e){}
+  function sayNext(){
+    if(tok!==SEQ){ done(); return; }
+    if(i>=parts.length){ done(); return; }
+    var u=new SpeechSynthesisUtterance(parts[i++]); u.rate=rate; u.pitch=1.03; pickVoice(u);
+    // one event per utterance: null both handlers on first fire so a browser that
+    // emits BOTH onend and onerror can't double-advance and skip a pause.
+    var step=function(){ u.onend=u.onerror=null; if(tok!==SEQ){ done(); return; } if(i<parts.length) setTimeout(sayNext, gapMs); else done(); };
+    u.onend=step; u.onerror=step;
+    try{window.speechSynthesis.speak(u);}catch(e){ done(); }
+  }
+  sayNext();
+}
+function shutUp(){ SEQ++; try{if('speechSynthesis' in window)window.speechSynthesis.cancel();}catch(e){} }
+/* Build "<question>", "Here are the choices.", "A. …", "B. …" from whatever is on
+   the given screen (h = host, g = guest), then read it slowly with pauses. */
+function hearParts(which){
+  var el=document.getElementById(which+'Q'); var qt=el?el.textContent.replace(/\s+/g,' ').trim():'';
+  var parts=[]; if(qt) parts.push(qt);
+  var btns=document.querySelectorAll('#'+which+'Opts .opt');
+  if(btns.length){
+    parts.push('Here are the choices.');
+    Array.prototype.forEach.call(btns, function(b){
+      var lab=b.querySelector('.lab'); var letter=lab?lab.textContent.replace(/\s+/g,'').trim():'';
+      var full=b.textContent.replace(/\s+/g,' ').trim();
+      var txt=letter?full.replace(new RegExp('^'+letter+'\\s*'),'').trim():full;
+      if(txt) parts.push((letter?letter+'. ':'')+txt);
+    });
+  }
+  return parts;
+}
+function hearQ(which){
+  var parts=hearParts(which);
+  // If the host re-reads WHILE the reveal lock is up, keep Next greyed until this
+  // reading finishes too — tapping "Hear it" must not hand them an early skip.
+  var relock = (which==='h' && HOST && HOST.phase==='reveal' && voiceOn());
+  var myPhase = HOST ? HOST.qi : -1;
+  var ok = function(){ if(HOST.phase==='reveal' && HOST.qi===myPhase) lockHostAction(false); };
+  if(relock){ lockHostAction(true); setTimeout(ok, Math.max(8000, parts.join(' ').split(/\s+/).length*520)+4000); }
+  speakSequence(parts, 0.8, 700, relock ? ok : undefined);
+}
+
+/* ---------- read-aloud preference (host screen only) ----------
+   Governs the AUTO reading on reveal + the Next-button lock. The manual
+   "🔊 Hear it" buttons always work (an explicit tap = "read it now"). */
+var VOICE_ON=true;
+function loadVoicePref(){ try{ VOICE_ON = localStorage.getItem('dys_live_voice')!=='0'; }catch(e){ VOICE_ON=true; } }
+function voiceOn(){ return VOICE_ON && ('speechSynthesis' in window); }
+function updateVoiceBtns(){ $$('.voicetog').forEach(function(b){ b.textContent = VOICE_ON?'🔊 Voice on':'🔇 Voice off'; b.setAttribute('aria-pressed', VOICE_ON?'true':'false'); }); }
+function toggleVoice(){
+  VOICE_ON=!VOICE_ON;
+  try{localStorage.setItem('dys_live_voice', VOICE_ON?'1':'0');}catch(e){}
+  if(!VOICE_ON){ shutUp(); lockHostAction(false); }   // muting frees the host immediately
+  updateVoiceBtns();
+}
+/* Grey/disable the host's advance button while the answer is being read. */
+function lockHostAction(locked){
+  var b=$('#hAction'); if(b){ b.disabled=!!locked; b.style.cursor=locked?'not-allowed':''; }
+  var hint=$('#hLockHint'); if(hint) hint.style.display=locked?'':'none';
+}
+
+/* ---------- confetti (no deps) ---------- */
+function confetti(){
+  try{
+    var box=document.createElement('div');
+    box.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:70;overflow:hidden';
+    document.body.appendChild(box);
+    for(var i=0;i<90;i++){
+      var d=document.createElement('div'), c=COLORS[i%COLORS.length];
+      var left=Math.random()*100, w=6+Math.random()*8, dur=2.2+Math.random()*1.8, delay=Math.random()*0.6, rot=Math.random()*360;
+      d.style.cssText='position:absolute;top:-16px;left:'+left+'%;width:'+w+'px;height:'+(w*0.55+3)+'px;background:'+c+';border-radius:2px;transform:rotate('+rot+'deg);opacity:.95;animation:confFall '+dur+'s linear '+delay+'s forwards';
+      box.appendChild(d);
+    }
+    setTimeout(function(){ if(box.parentNode)box.parentNode.removeChild(box); }, 4600);
+  }catch(e){}
+}
 
 /* ---------- Firebase ---------- */
 var db=null, FBOK=false;
@@ -234,6 +335,7 @@ function goHost(){
 }
 function hostStart(){ if(!ROOM)return; HOST.qi=-1; HOST.used={}; nextQuestion(); }
 function nextQuestion(){
+  lockHostAction(false);   // defensive: never carry a stuck disabled Next into a new question
   HOST.qi++;
   if(HOST.qi>=TOTAL_Q){ hostEndGame(); return; }
   // pick an unused question
@@ -251,7 +353,7 @@ function nextQuestion(){
   $('#hStatus').style.display=""; $('#hAction').textContent="Reveal answer ▶️";
   show('hostPlay');
 }
-function hostAction(){ if(HOST.phase==='question') hostReveal(); else nextQuestion(); }
+function hostAction(){ if(HOST.phase==='question'){ hostReveal(); } else { var b=$('#hAction'); if(b&&b.disabled)return; shutUp(); nextQuestion(); } }
 function hostReveal(){
   HOST.phase='reveal';
   var ans=(HOST.allAnswers&&HOST.allAnswers[HOST.qi])||{};
@@ -273,6 +375,18 @@ function hostReveal(){
   $('#hStatus').style.display="none"; $('#hReveal').style.display="";
   $('#hAction').textContent=(HOST.qi+1>=TOTAL_Q)?"See final results 🏆":"Next question ▶️";
   renderLiveLeaderboards();
+  // Learn-before-advance: read the question + right answer slowly, and grey the
+  // Next button until it finishes so no one skips past the teaching moment.
+  var sayParts=[ $('#hQ').textContent, 'The answer is '+HOST.answerText+'.' ];
+  var willRead = voiceOn();
+  lockHostAction(!!willRead);
+  if(willRead){
+    var myPhase=HOST.qi;
+    var ok=function(){ if(HOST.phase==='reveal' && HOST.qi===myPhase) lockHostAction(false); };
+    var words=sayParts.join(' ').split(/\s+/).length;
+    setTimeout(ok, Math.max(7000, words*520)+3000);   // safety net — never trap the host
+    speakSequence(sayParts, 0.82, 650, ok);           // start inside the tap: iOS Safari drops speech begun outside a user gesture
+  }
 }
 function hostEndGame(){ db.ref('rooms/'+ROOM).update({ state:"ended" }); db.ref('rooms/'+ROOM).once('value').then(function(s){ var r=s.val(); if(r) showResults(r); }); }
 function hostEndRoom(){ if(ROOM){ db.ref('rooms/'+ROOM).remove(); } location.reload(); }
@@ -351,21 +465,30 @@ function guestReveal(r){
 function guestEnd(r){ showResults(r); }
 
 /* ---------- results ---------- */
+var RESULTS_SHOWN=false;
 function showResults(r){
   var arr=Object.keys(r.players||{}).map(function(id){return r.players[id];}).sort(function(a,b){return (b.score||0)-(a.score||0);});
   var top=arr.length?(arr[0].score||0):0;
   var winners=arr.filter(function(p){return (p.score||0)===top;});
   var tie=winners.length>1 && top>0;
+  var title=(!arr.length||top===0)?"Game over":(tie?"It's a tie!":(arr[0].name+" wins!"));
   $('#resEmoji').textContent= tie?"🤝":"🏆";
-  $('#resTitle').textContent= (!arr.length||top===0)?"Game over":(tie?"It's a tie!":(arr[0].name+" wins!"));
+  $('#resTitle').textContent= title;
   $('#resLB').innerHTML=leaderboardHTML(arr);
   show('results');
+  if(RESULTS_SHOWN) return;   // the guest 'ended' snapshot can fire more than once
+  RESULTS_SHOWN=true;
+  if(top>0){
+    confetti(); setTimeout(confetti,500); if(!tie) setTimeout(confetti,1000);
+    if(ROOM && voiceOn()) speak(title);   // only the host screen announces it, not 20 phones
+  }
 }
 // host also shows results when it ends
 function hostWatchEnd(){ db.ref('rooms/'+ROOM).on('value', function(snap){ var r=snap.val(); if(r&&r.state==='ended'){ showResults(r); } }); }
 
 /* ---------- boot ---------- */
 (function boot(){
+  loadVoicePref(); updateVoiceBtns();
   if(initFB()){ show('home'); hostWatchEndWhenReady(); }
   else { show('setup'); }
   // uppercase code input
