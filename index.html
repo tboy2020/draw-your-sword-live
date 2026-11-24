@@ -70,6 +70,32 @@ a{color:var(--ink-soft);}
 .timer{font-weight:900; font-size:22px; color:var(--gold);}
 .hearbtn{margin-top:10px; font-family:var(--font); font-weight:800; font-size:15px; border:0; cursor:pointer; color:#2a2208; background:rgba(244,196,48,.92); border-radius:999px; padding:9px 18px; box-shadow:0 4px 0 #b9860b;}
 .hearbtn:active{transform:translateY(2px); box-shadow:0 2px 0 #b9860b;}
+/* --- who's-answered strip (names for small rooms, count+bar for big) --- */
+.anslabel{color:var(--ink-soft); font-size:11px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; margin:2px 0 7px;}
+.ansrow{display:flex; flex-wrap:wrap; gap:7px; justify-content:center; margin:2px 0 4px;}
+.achip{display:inline-flex; align-items:center; gap:7px; border-radius:999px; padding:6px 13px; font-weight:800; font-size:14px; box-shadow:0 3px 0 rgba(0,0,0,.2);}
+.achip .adot{width:12px; height:12px; border-radius:50%; flex:none;}
+.achip.yes{color:#fff;} .achip.yes .tick{color:#06351f;}
+.achip.no{background:rgba(255,255,255,.05); border:2px dashed rgba(255,255,255,.22); color:var(--ink-soft);}
+.acount{font-weight:900; font-size:19px; color:#fff; margin:8px 0 4px;} .acount b{color:var(--gold); font-size:24px;}
+.abar{height:13px; border-radius:999px; background:rgba(255,255,255,.12); overflow:hidden; max-width:360px; margin:4px auto 2px;}
+.abar>i{display:block; height:100%; background:linear-gradient(90deg,var(--gold),#ffe9a8); width:0; transition:width .35s ease;}
+.mine{font-weight:900; font-size:18px; margin:9px 0 2px; min-height:1.3em;}
+.mine.in{color:#9af5cf;} .mine.ok{color:#9af5cf;} .mine.no{color:#ffb3c4;}
+.opt.chosen{animation:lockpop .28s ease;}
+@keyframes lockpop{0%{transform:scale(1)}45%{transform:scale(1.06)}100%{transform:scale(1)}}
+/* --- spin + Bible-part picker --- */
+.spin{font-family:var(--font); font-weight:900; font-size:clamp(30px,9vw,54px); color:var(--gold); min-height:1.3em; margin:16px 0 2px; text-shadow:0 4px 0 rgba(0,0,0,.25); line-height:1.1;}
+.spinsub{color:var(--ink-soft); font-weight:800; font-size:16px; margin:4px 0 2px; min-height:1.3em;}
+.partgrid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0;}
+.partcell{font-family:var(--font); border:0; cursor:pointer; color:#fff; border-radius:16px; padding:14px 8px; display:flex; flex-direction:column; align-items:center; gap:2px; box-shadow:0 5px 0 rgba(0,0,0,.26); text-align:center; transition:transform .06s;}
+.partcell:active{transform:translateY(3px); box-shadow:0 2px 0 rgba(0,0,0,.26);}
+.partcell .pe{font-size:30px; line-height:1;}
+.partcell b{font-size:15px; text-shadow:0 1px 2px rgba(0,0,0,.3);} .partcell small{font-size:11px; opacity:.95; text-shadow:0 1px 2px rgba(0,0,0,.3);}
+.partcell.allcell{grid-column:1 / -1; background:linear-gradient(160deg,#6d4bd6,#8a5cf0);}
+.partcell.prev,.partcell[disabled]{opacity:.55; cursor:default; box-shadow:0 4px 0 rgba(0,0,0,.22);}
+.partcell.prev:active{transform:none;}
+.catpill{background:rgba(255,255,255,.1); border-radius:999px; padding:6px 12px; font-weight:800; font-size:13px;}
 </style>
 </head>
 <body>
@@ -114,7 +140,9 @@ a{color:var(--ink-soft);}
     <div class="code" id="hostCode">----</div>
     <p class="muted" id="joinUrl"></p>
     <div class="card">
-      <div><span class="count" id="plCount">0</span> joined</div>
+      <label class="muted">Your name <span style="opacity:.8">(you play too)</span></label>
+      <input id="hostNameIn" maxlength="14" placeholder="Your name" autocomplete="off">
+      <div style="margin-top:8px"><span class="count" id="plCount">0</span> in the room</div>
       <div class="players" id="lobbyPlayers"></div>
     </div>
     <button class="btn big" id="startBtn" onclick="hostStart()">Start game ▶️</button>
@@ -122,12 +150,22 @@ a{color:var(--ink-soft);}
     <button class="btn ghost sm" onclick="hostEndRoom()">✕ Close room</button>
   </section>
 
+  <!-- CHOOSE (spin -> the chosen person picks the Bible part) -->
+  <section id="choose" class="screen">
+    <div class="tag">Who picks the Bible part?</div>
+    <div class="sword" style="font-size:54px">🎡</div>
+    <div class="spin" id="spinName">✦</div>
+    <div class="spinsub" id="spinSub">Spinning…</div>
+    <div id="chooseBody"></div>
+  </section>
+
   <!-- HOST PLAY -->
   <section id="hostPlay" class="screen">
-    <div class="topbar"><span class="pill" id="hRoom">Room</span><button class="hearbtn voicetog" style="margin-top:0" onclick="toggleVoice()">🔊 Voice on</button><span class="pill" id="hProg">Q 1/10</span></div>
+    <div class="topbar"><span class="pill" id="hRoom">Room</span><span class="catpill" id="hCat" style="display:none"></span><button class="hearbtn voicetog" style="margin-top:0" onclick="toggleVoice()">🔊 Voice on</button><span class="pill" id="hProg">Q 1/10</span></div>
     <div class="qcard"><div class="qtext" id="hQ">…</div><div class="qref" id="hRef"></div><button class="hearbtn" onclick="hearQ('h')">🔊 Hear it</button></div>
     <div id="hOpts" class="opts"></div>
-    <div class="big-feed" id="hStatus"><span class="count" id="hAnsCount">0</span> / <span id="hPlTotal">0</span> answered</div>
+    <div class="mine" id="hMine"></div>
+    <div id="hStatus"></div>
     <div id="hReveal" style="display:none"><div class="lb" id="hLB"></div></div>
     <div id="hLockHint" class="muted" style="display:none; margin:4px 0 2px">🔊 Listen to the answer…</div>
     <button class="btn big" id="hAction" onclick="hostAction()">Reveal answer ▶️</button>
@@ -135,9 +173,11 @@ a{color:var(--ink-soft);}
 
   <!-- GUEST PLAY -->
   <section id="guestPlay" class="screen">
-    <div class="topbar"><span class="pill" id="gName">You</span><span class="pill" id="gProg">Q 1/10</span><span class="pill" id="gScore">0 pts</span></div>
+    <div class="topbar"><span class="pill" id="gName">You</span><span class="catpill" id="gCat" style="display:none"></span><span class="pill" id="gProg">Q 1/10</span><span class="pill" id="gScore">0 pts</span></div>
     <div class="qcard"><div class="qtext" id="gQ">…</div><div class="qref" id="gRef"></div><button class="hearbtn" onclick="hearQ('g')">🔊 Hear it</button></div>
     <div id="gOpts" class="opts"></div>
+    <div class="mine" id="gMine"></div>
+    <div id="gStatus"></div>
     <div class="big-feed" id="gFeed"></div>
     <div id="gReveal" style="display:none"><div class="lb" id="gLB"></div></div>
     <p class="muted" id="gWait">Waiting for the host…</p>
@@ -184,6 +224,51 @@ function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
 function shuffle(a){ a=a.slice(); for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;} return a; }
 var COLORS=["#f4c430","#36c08a","#4aa3ff","#ff6b8a","#b084ff","#ff9f43","#2dd4bf","#f06595","#ffd166","#9b5de5","#00bbf9","#fb5607"];
 var OPTCLS=["a","b","c","d"], OPTLAB=["A","B","C","D"];
+
+/* ---- the Bible parts a chosen player can pick for the room ---- */
+var PARTS=[
+  {id:'law',           name:'The Law',               sub:'Genesis–Deuteronomy', emoji:'📜', color:'#c9821f'},
+  {id:'history',       name:'History',               sub:'Joshua–Esther',       emoji:'🏰', color:'#2f6fed'},
+  {id:'wisdom',        name:'Poetry & Wisdom',       sub:'Job–Song of Songs',   emoji:'🎶', color:'#1f9e75'},
+  {id:'majorprophets', name:'Major Prophets',        sub:'Isaiah–Daniel',       emoji:'🔥', color:'#e24b4a'},
+  {id:'minorprophets', name:'Minor Prophets',        sub:'Hosea–Malachi',       emoji:'📯', color:'#d8734a'},
+  {id:'gospels',       name:'The Gospels',           sub:'Matthew–John',        emoji:'✝️', color:'#8a5cf0'},
+  {id:'acts',          name:'Acts',                  sub:'The early church',    emoji:'🌍', color:'#1aa89a'},
+  {id:'paul',          name:"Paul's Letters",        sub:'Romans–Philemon',     emoji:'✉️', color:'#e8820c'},
+  {id:'generalrev',    name:'Letters & Revelation',  sub:'Hebrews–Revelation',  emoji:'👑', color:'#b8880c'}
+];
+var PART_BY_ID={}; PARTS.forEach(function(p){ PART_BY_ID[p.id]=p; });
+function catName(id){ return id==='ALL' ? 'All the Bible' : ((PART_BY_ID[id]||{}).name||id); }
+
+/* ---- "who's answered" display: NAMES when the room is small, a COUNT + bar when big ---- */
+var SMALL_MAX=6;   // at/below this many players show names; above, show a tidy count + bar
+function playersArr(obj){ obj=obj||{}; return Object.keys(obj).map(function(id){ var p=obj[id]||{}; return {id:id, name:p.name||'Player', color:p.color||'#888', isHost:!!p.isHost}; }); }
+function renderAnswered(el, playersObj, answeredObj){
+  if(!el) return;
+  var players=playersArr(playersObj), answered=answeredObj||{};
+  var total=players.length, n=0; players.forEach(function(p){ if(answered[p.id]) n++; });
+  if(total===0){ el.innerHTML=''; return; }
+  if(total<=SMALL_MAX){
+    players.sort(function(a,b){ return (b.isHost?1:0)-(a.isHost?1:0); });  // host first
+    var chips=players.map(function(p){
+      var yes=!!answered[p.id];
+      return '<span class="achip '+(yes?'yes':'no')+'"'+(yes?' style="background:'+p.color+'"':'')+'>'
+        + '<span class="adot" style="background:'+p.color+';'+(yes?'':'opacity:.5')+'"></span>'
+        + esc(p.name)+(p.isHost?' 🎤':'')
+        + (yes?' <span class="tick">✓</span>':' <span style="opacity:.7">…</span>')
+        + '</span>';
+    }).join('');
+    el.innerHTML='<div class="anslabel">Who’s answered · '+n+' of '+total+'</div><div class="ansrow">'+chips+'</div>';
+  } else {
+    var pct=Math.round(n/total*100);
+    el.innerHTML='<div class="acount"><b>'+n+'</b> of '+total+' answered</div><div class="abar"><i style="width:'+pct+'%"></i></div>';
+  }
+}
+/* ---- tap feedback: a short tick + a phone buzz so an answer always FEELS like it landed ---- */
+var _ac=null;
+function tick(){ try{ if(!_ac)_ac=new (window.AudioContext||window.webkitAudioContext)(); if(_ac.state==='suspended')_ac.resume(); var o=_ac.createOscillator(),g=_ac.createGain(); o.type='triangle'; o.frequency.value=680; o.connect(g); g.connect(_ac.destination); var t=_ac.currentTime; g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.08,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.14); o.start(t); o.stop(t+0.15);}catch(e){} }
+function buzz(ms){ try{ if(navigator.vibrate)navigator.vibrate(ms||30); }catch(e){} }
+function lockFx(){ tick(); buzz(30); }
 var VOICES=[]; function loadVoices(){ try{VOICES=window.speechSynthesis.getVoices()||[];}catch(e){} }
 if('speechSynthesis' in window){ loadVoices(); try{window.speechSynthesis.onvoiceschanged=loadVoices;}catch(e){} }
 function pickVoice(u){ var v=VOICES.filter(function(x){return /en[-_]/i.test(x.lang);})[0]; if(v)u.voice=v; }
@@ -309,52 +394,90 @@ var BANK=null;
 function loadBank(){ return fetch('data/content.json').then(function(r){return r.json();}).then(function(j){ var all=[]; var S=j.sections||{}; Object.keys(S).forEach(function(k){ S[k].forEach(function(q){ q._sec=k; all.push(q); }); }); BANK=all; return all; }); }
 
 /* ===================== HOST ===================== */
-var ROOM=null, HOST={ qi:-1, used:{}, answerIndex:-1, answerText:"", phase:"lobby", players:{} };
+var ROOM=null, HOST={ id:pid(), qi:-1, used:{}, answerIndex:-1, answerText:"", phase:"lobby", players:{}, answeredQi:-1, chosen:null, name:"Host" };
 function goHost(){
   if(!FBOK){ show('setup'); return; }
   show('home'); // brief
   loadBank().then(function(){
     ROOM=genCode();
-    db.ref('rooms/'+ROOM).set({ createdAt:firebase.database.ServerValue.TIMESTAMP, host:{name:"Host"}, state:"lobby", qIndex:-1, total:TOTAL_Q });
+    try{ HOST.name=(localStorage.getItem('dys_live_name')||'Host'); }catch(e){ HOST.name='Host'; }
+    db.ref('rooms/'+ROOM).set({ createdAt:firebase.database.ServerValue.TIMESTAMP, state:"lobby", qIndex:-1, total:TOTAL_Q });
     db.ref('rooms/'+ROOM).onDisconnect().remove();
+    // the host is ALSO a player (so they answer, are counted, and show on the board)
+    db.ref('rooms/'+ROOM+'/players/'+HOST.id).set({ name:HOST.name, color:pick(COLORS), score:0, isHost:true, joinedAt:firebase.database.ServerValue.TIMESTAMP });
     $('#hostCode').textContent=ROOM;
     $('#joinUrl').textContent=location.href.replace(/live\/?.*/,'live/')+"  · code "+ROOM;
+    // host name field (prefilled, remembered) -> updates the host player's name live
+    var hn=$('#hostNameIn');
+    if(hn){ hn.value=(HOST.name==='Host'?'':HOST.name);
+      hn.oninput=function(){ var v=(this.value||'').trim().slice(0,14)||'Host'; HOST.name=v; try{localStorage.setItem('dys_live_name',v);}catch(e){} if(ROOM) db.ref('rooms/'+ROOM+'/players/'+HOST.id+'/name').set(v); };
+    }
     // watch players
     db.ref('rooms/'+ROOM+'/players').on('value', function(snap){
       HOST.players=snap.val()||{};
       var ids=Object.keys(HOST.players);
       $('#plCount').textContent=ids.length;
-      $('#lobbyPlayers').innerHTML=ids.map(function(id){var p=HOST.players[id]; return '<span class="pchip" style="background:'+(p.color||'#888')+'">'+esc(p.name)+'</span>';}).join('');
+      $('#lobbyPlayers').innerHTML=ids.map(function(id){var p=HOST.players[id]; return '<span class="pchip" style="background:'+(p.color||'#888')+'">'+esc(p.name)+(p.isHost?' 🎤':'')+'</span>';}).join('');
       $('#startBtn').disabled=ids.length<1;
+      if(HOST.phase==='question') renderAnswered($('#hStatus'), HOST.players, (HOST.allAnswers&&HOST.allAnswers[HOST.qi])||{});
       renderLiveLeaderboards();
     });
-    // watch answers for current question
+    // watch answers for current question -> live "who's answered" strip
     db.ref('rooms/'+ROOM+'/answers').on('value', function(snap){
       HOST.allAnswers=snap.val()||{};
-      if(HOST.phase==='question'){ var a=(HOST.allAnswers[HOST.qi])||{}; var n=Object.keys(a).length; $('#hAnsCount').textContent=n; $('#hPlTotal').textContent=Object.keys(HOST.players).length; }
+      if(HOST.phase==='question'){ renderAnswered($('#hStatus'), HOST.players, HOST.allAnswers[HOST.qi]||{}); }
     });
     show('hostLobby');
   }).catch(function(e){ toast("Couldn't load the question bank."); console.error(e); });
 }
-function hostStart(){ if(!ROOM)return; HOST.qi=-1; HOST.used={}; nextQuestion(); }
+function hostStart(){
+  if(!ROOM) return;
+  var ids=Object.keys(HOST.players||{}); if(!ids.length){ toast("Waiting for players…"); return; }
+  CHOOSE_SPUN=null; HOST.category=null; HOST.categoryName=null; HOST.phase='choosing';
+  var chId=ids[Math.floor(Math.random()*ids.length)];
+  var chName=(HOST.players[chId]||{}).name||'Player';
+  db.ref('rooms/'+ROOM).update({ state:'choosing', chooser:{id:chId, name:chName}, category:null, categoryName:null });
+  // react the moment the chosen person (host OR a guest) picks a part
+  db.ref('rooms/'+ROOM+'/category').off();
+  db.ref('rooms/'+ROOM+'/category').on('value', function(snap){
+    var cat=snap.val();
+    if(cat && HOST.phase==='choosing'){ db.ref('rooms/'+ROOM+'/category').off(); HOST.category=cat; HOST.categoryName=catName(cat); startQuestions(); }
+  });
+  enterChoosing({ chooser:{id:chId, name:chName}, players:HOST.players }, true);
+}
+function startQuestions(){ HOST.qi=-1; HOST.used={}; nextQuestion(); }
 function nextQuestion(){
   lockHostAction(false);   // defensive: never carry a stuck disabled Next into a new question
   HOST.qi++;
   if(HOST.qi>=TOTAL_Q){ hostEndGame(); return; }
-  // pick an unused question
-  var avail=BANK.filter(function(q){return !HOST.used[q.q];}); if(!avail.length){ HOST.used={}; avail=BANK; }
+  // pick an unused question from the chosen Bible part (or the whole Bible)
+  var pool = (HOST.category && HOST.category!=='ALL') ? BANK.filter(function(q){return q._sec===HOST.category;}) : BANK;
+  if(!pool.length) pool=BANK;
+  var avail=pool.filter(function(q){return !HOST.used[q.q];}); if(!avail.length){ HOST.used={}; avail=pool; }
   var q=pick(avail); HOST.used[q.q]=1;
   var opts=shuffle((q.options||[q.a]).slice(0,4)); if(opts.indexOf(q.a)<0){opts[0]=q.a; opts=shuffle(opts);}
   HOST.answerIndex=opts.indexOf(q.a); HOST.answerText=q.a; HOST.phase='question';
-  var payload={ q:q.q, options:opts, ref:q.ref||"", idx:HOST.qi, at:firebase.database.ServerValue.TIMESTAMP };
+  HOST.curOpts=opts; HOST.answeredQi=-1; HOST.chosen=null; HOST._shownAt=Date.now();
+  var payload={ q:q.q, options:opts, ref:q.ref||"", idx:HOST.qi, cat:(HOST.categoryName||""), at:firebase.database.ServerValue.TIMESTAMP };
   db.ref('rooms/'+ROOM).update({ state:"question", qIndex:HOST.qi, current:payload, reveal:null });
-  // host view
+  // host view — the host plays too, so the options are real buttons
   $('#hRoom').textContent="Room "+ROOM; $('#hProg').textContent="Q "+(HOST.qi+1)+"/"+TOTAL_Q;
+  var hc=$('#hCat'); if(hc){ if(HOST.categoryName){ hc.textContent='📂 '+HOST.categoryName; hc.style.display=''; } else { hc.style.display='none'; } }
   $('#hQ').textContent=q.q; $('#hRef').textContent=q.ref?("📖 "+q.ref):"";
-  $('#hOpts').innerHTML=opts.map(function(o,i){return '<div class="opt '+OPTCLS[i]+'"><span class="lab">'+OPTLAB[i]+'</span> '+esc(o)+'</div>';}).join('');
-  $('#hReveal').style.display="none"; $('#hAnsCount').textContent="0"; $('#hPlTotal').textContent=Object.keys(HOST.players).length;
-  $('#hStatus').style.display=""; $('#hAction').textContent="Reveal answer ▶️";
+  $('#hOpts').innerHTML=opts.map(function(o,i){return '<button class="opt '+OPTCLS[i]+'" onclick="hostAnswer('+i+')"><span class="lab">'+OPTLAB[i]+'</span> '+esc(o)+'</button>';}).join('');
+  $('#hMine').className='mine'; $('#hMine').textContent='';
+  $('#hReveal').style.display="none"; $('#hAction').textContent="Reveal answer ▶️";
+  renderAnswered($('#hStatus'), HOST.players, {});
   show('hostPlay');
+}
+function hostAnswer(i){
+  var qi=HOST.qi; if(HOST.phase!=='question' || HOST.answeredQi===qi) return;
+  HOST.answeredQi=qi; HOST.chosen=i;
+  var ms=Date.now()-(HOST._shownAt||Date.now());
+  db.ref('rooms/'+ROOM+'/answers/'+qi+'/'+HOST.id).set({ choice:i, ms:ms });
+  $$('#hOpts .opt').forEach(function(b,j){ b.disabled=true; if(j===i)b.classList.add('chosen'); else b.classList.add('dim'); });
+  lockFx();
+  var m=$('#hMine'); if(m){ m.className='mine in'; m.textContent='✓ You’re in — waiting for others…'; }
 }
 function hostAction(){ if(HOST.phase==='question'){ hostReveal(); } else { var b=$('#hAction'); if(b&&b.disabled)return; shutUp(); nextQuestion(); } }
 function hostReveal(){
@@ -373,9 +496,13 @@ function hostReveal(){
   updates['reveal']={ correctIndex:HOST.answerIndex, a:HOST.answerText, counts:counts };
   updates['state']="reveal";
   db.ref('rooms/'+ROOM).update(updates);
-  // host view highlight
-  $$('#hOpts .opt').forEach(function(b,i){ if(i===HOST.answerIndex)b.classList.add('right'); else b.classList.add('dim'); });
-  $('#hStatus').style.display="none"; $('#hReveal').style.display="";
+  // host view: show the correct answer, keep the host's own pick highlighted, give personal feedback
+  $$('#hOpts .opt').forEach(function(b,i){ b.disabled=true; if(i===HOST.answerIndex){ b.classList.remove('dim'); b.classList.add('right'); } else if(i!==HOST.chosen){ b.classList.add('dim'); } });
+  var hm=$('#hMine');
+  if(hm){ if(HOST.chosen==null){ hm.className='mine no'; hm.textContent='⌛ You didn’t answer — it was '+HOST.answerText; }
+    else if(HOST.chosen===HOST.answerIndex){ hm.className='mine ok'; hm.textContent='✅ Correct! +1'; }
+    else { hm.className='mine no'; hm.textContent='❌ You picked '+((HOST.curOpts&&HOST.curOpts[HOST.chosen])||'')+' — answer: '+HOST.answerText; } }
+  $('#hStatus').innerHTML=""; $('#hReveal').style.display="";
   $('#hAction').textContent=(HOST.qi+1>=TOTAL_Q)?"See final results 🏆":"Next question ▶️";
   renderLiveLeaderboards();
   // Learn-before-advance: read the question + right answer slowly, and grey the
@@ -402,6 +529,66 @@ function leaderboardHTML(arr){
   return arr.slice(0,12).map(function(p,i){ var medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'; return '<div class="lbrow"><span class="nm"><span class="dot" style="background:'+(p.color||'#888')+'"></span>'+medal+' '+esc(p.name)+'</span><b>'+(p.score||0)+'</b></div>'; }).join('');
 }
 
+/* ============ SPIN + PART PICKER (shared by host & guests) ============ */
+function myRoom(){ return ROOM || ME.code; }
+var CHOOSE_SPUN=null;
+/* Cycle the players' names, decelerating, and land on `target`. Visual only — each
+   device spins locally but lands on the same (already-decided) chooser. */
+function spinTo(names, target, onDone){
+  var el=$('#spinName'); if(!el){ if(onDone)onDone(); return; }
+  names=(names&&names.length)?names.slice():[target];
+  var order=names.slice(); if(order.indexOf(target)<0) order.push(target);
+  var ti=order.indexOf(target);
+  var seq=[], loops=3, l, k;
+  for(l=0;l<loops;l++){ for(k=0;k<order.length;k++) seq.push(order[k]); }
+  for(k=0;k<=ti;k++) seq.push(order[k]);     // final partial lap ends exactly on target
+  var i=0, d=55;
+  function step(){
+    el.textContent=seq[i]; i++;
+    if(i>=seq.length){ el.textContent=target; buzz(80); if(onDone)onDone(); return; }
+    if(seq.length-i<10){ d*=1.22; }           // slow down at the end
+    setTimeout(step, Math.min(d,420));
+  }
+  step();
+}
+function enterChoosing(r, isHost){
+  show('choose');
+  if(r && r.category){ $('#spinSub').textContent='Starting the game… ✨'; $('#chooseBody').innerHTML=''; return; } // already picked
+  var chooser=(r&&r.chooser)||{};
+  var names=playersArr((r&&r.players)||{}).map(function(p){return p.name;});
+  if(CHOOSE_SPUN===chooser.id){ afterSpin(chooser, isHost); return; }   // don't re-spin on later snapshots
+  CHOOSE_SPUN=chooser.id;
+  $('#spinSub').textContent='Spinning…'; $('#chooseBody').innerHTML='';
+  spinTo(names, chooser.name||'…', function(){ afterSpin(chooser, isHost); });
+}
+function afterSpin(chooser, isHost){
+  var amChooser=(chooser.id===pid());
+  $('#spinSub').textContent = amChooser ? '🎉 You were chosen — pick the Bible part!'
+    : ('🎉 '+esc(chooser.name||'Someone')+' is choosing the Bible part…');
+  var body=$('#chooseBody');
+  if(amChooser){ body.innerHTML=partGridHTML(false); }                       // the chooser can tap
+  else if(isHost){ body.innerHTML=partGridHTML(true)+'<button class="btn ghost sm" onclick="hostOverridePick()" style="margin-top:2px">I’ll pick for the room</button>'; }
+  else { body.innerHTML=partGridHTML(true); }                                 // everyone else SEES the parts (preview)
+}
+function partGridHTML(preview){
+  // preview=true -> everyone-can-SEE-but-not-tap tiles (shown to non-choosers)
+  function cell(id, emoji, name, sub, color, all){
+    var cls='partcell'+(all?' allcell':'')+(preview?' prev':'');
+    var oc=preview?' disabled':(' onclick="choosePart(\''+id+'\')"');
+    var st=all?'':(' style="background:'+color+'"');
+    return '<button class="'+cls+'"'+st+oc+'><span class="pe">'+emoji+'</span><b>'+esc(name)+'</b><small>'+esc(sub)+'</small></button>';
+  }
+  var cells=PARTS.map(function(p){ return cell(p.id,p.emoji,p.name,p.sub,p.color,false); }).join('');
+  return '<div class="partgrid">'+cell('ALL','📖','All the Bible','a full mix',null,true)+cells+'</div>';
+}
+function choosePart(id){
+  var rc=myRoom(); if(!rc) return;
+  db.ref('rooms/'+rc).update({ category:id, categoryName:catName(id) });
+  $('#spinSub').textContent='✓ You chose '+catName(id)+'!';
+  $('#chooseBody').innerHTML='<p class="muted" style="margin:14px 0">Starting the game… ✨</p>';
+}
+function hostOverridePick(){ $('#spinSub').textContent='Pick the Bible part for the room:'; $('#chooseBody').innerHTML=partGridHTML(false); }
+
 /* ===================== GUEST ===================== */
 var ME={ code:null, name:null, score:0, answeredQi:-1 };
 function doJoin(){
@@ -425,7 +612,14 @@ function watchRoomAsGuest(code){
   db.ref('rooms/'+code).on('value', function(snap){
     var r=snap.val(); if(!r){ toast("The host closed the room."); setTimeout(function(){location.reload();},1500); return; }
     var me=(r.players&&r.players[pid()])||{}; ME.score=me.score||0; $('#gScore').textContent=(ME.score)+" right";
-    if(r.state==='question' && r.current){ guestQuestion(r); if(ME.answeredQi===r.qIndex){ var ans=(r.answers&&r.answers[r.qIndex])||{}; $('#gWait').textContent="⏳ "+Object.keys(ans).length+" of "+Object.keys(r.players||{}).length+" answered…"; } }
+    if(r.state==='choosing'){ enterChoosing(r, false); return; }
+    // once the game is running, make sure we're on the play screen (we may be coming from 'choose')
+    if((r.state==='question'||r.state==='reveal') && !$('#guestPlay').classList.contains('active')){ show('guestPlay'); }
+    if(r.state==='question' && r.current){
+      guestQuestion(r);
+      renderAnswered($('#gStatus'), r.players||{}, (r.answers&&r.answers[r.qIndex])||{});   // live who's-answered
+      $('#gWait').textContent=(ME.answeredQi===r.qIndex)?"Waiting for the others…":"Tap your answer!";
+    }
     else if(r.state==='reveal'){ guestReveal(r); }
     else if(r.state==='ended'){ guestEnd(r); }
   });
@@ -435,10 +629,12 @@ function guestQuestion(r){
   if(ME.renderedQi===qi) return;   // already showing this question — don't re-render (keeps YOUR picked answer visible)
   ME.renderedQi=qi; ME.chosen=null;
   $('#gProg').textContent="Q "+(qi+1)+"/"+(r.total||TOTAL_Q);
+  var gc=$('#gCat'); if(gc){ var cn=(r.current&&r.current.cat)||''; if(cn){ gc.textContent='📂 '+cn; gc.style.display=''; } else { gc.style.display='none'; } }
   $('#gQ').textContent=r.current.q; $('#gRef').textContent=r.current.ref?("📖 "+r.current.ref):"";
   $('#gReveal').style.display="none"; $('#gFeed').textContent="";
+  $('#gMine').className='mine'; $('#gMine').textContent='';
   var answered=(ME.answeredQi===qi);
-  $('#gWait').textContent=answered?"Answer locked in — waiting for others… ⏳":"Tap your answer!";
+  if(answered){ $('#gMine').className='mine in'; $('#gMine').textContent='✓ You’re in — waiting for others…'; }
   ME._shownAt=Date.now();
   $('#gOpts').innerHTML=(r.current.options||[]).map(function(o,i){return '<button class="opt '+OPTCLS[i]+'" '+(answered?'disabled':'')+' onclick="guestAnswer('+i+')"><span class="lab">'+OPTLAB[i]+'</span> '+esc(o)+'</button>';}).join('');
 }
@@ -448,10 +644,14 @@ function guestAnswer(i){
   var ms=Date.now()-(ME._shownAt||Date.now());
   db.ref('rooms/'+ME.code+'/answers/'+qi+'/'+pid()).set({ choice:i, ms:ms });
   $$('#gOpts .opt').forEach(function(b,j){ b.disabled=true; if(j===i)b.classList.add('chosen'); else b.classList.add('dim'); });
-  $('#gWait').textContent="Answer locked in — waiting for others… ⏳";
+  lockFx();
+  var m=$('#gMine'); if(m){ m.className='mine in'; m.textContent='✓ You’re in — waiting for others…'; }
+  $('#gWait').textContent="Waiting for the others…";
 }
 function guestReveal(r){
   if(!r.reveal) return;
+  var gm=$('#gMine'); if(gm){ gm.className='mine'; gm.textContent=''; }   // #gFeed shows the result now
+  var gs=$('#gStatus'); if(gs) gs.innerHTML='';
   var ci=r.reveal.correctIndex;
   if(ME.chosen!=null){ var ob=$$('#gOpts .opt')[ME.chosen]; if(ob)ob.classList.add('chosen'); }  // keep YOUR pick highlighted
   $$('#gOpts .opt').forEach(function(b,j){ b.disabled=true; if(j===ci){ b.classList.remove('dim'); b.classList.add('right'); } else if(!b.classList.contains('chosen'))b.classList.add('dim'); });
@@ -460,6 +660,7 @@ function guestReveal(r){
   var f=$('#gFeed');
   if(gotPts>0){ f.textContent="✅ Correct!  (+1 point)"; f.className="big-feed ok"; }
   else if(picked!=null){ f.textContent="❌ You picked "+picked+" — answer: "+r.reveal.a; f.className="big-feed no"; }
+  else if(ME.renderedQi!==r.qIndex){ f.textContent="⏳ You joined mid-question — jump in on the next one!"; f.className="big-feed"; }
   else { f.textContent="⌛ No answer — it was: "+r.reveal.a; f.className="big-feed no"; }
   $('#gWait').textContent="Here's how everyone's doing:";
   $('#gReveal').style.display=""; $('#gLB').innerHTML=leaderboardHTML(Object.keys(r.players||{}).map(function(id){return r.players[id];}));
