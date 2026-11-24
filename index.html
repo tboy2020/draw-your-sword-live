@@ -106,7 +106,9 @@ a{color:var(--ink-soft);}
 .qrbox img,.qrbox canvas{width:188px; height:188px; display:block;}
 .qrcap{color:var(--ink-soft); font-size:14px; font-weight:800;}
 .tvtoggle{position:fixed; top:10px; right:12px; z-index:55; display:none;}
-.gphint{position:fixed; left:50%; bottom:10px; transform:translateX(-50%); z-index:55; background:rgba(26,16,66,.9); border:2px solid rgba(255,255,255,.2); color:var(--ink-soft); font-weight:800; font-size:13px; padding:7px 15px; border-radius:999px; display:none;}
+.gphint{position:fixed; left:50%; bottom:10px; transform:translateX(-50%); z-index:55; background:rgba(26,16,66,.9); border:2px solid rgba(255,255,255,.2); color:var(--ink-soft); font-weight:800; font-size:13px; padding:7px 15px; border-radius:999px; display:none; max-width:94vw; text-align:center;}
+.padbtn{display:inline-block; background:rgba(0,0,0,.3); border-radius:9px; padding:2px 9px; font-size:16px; margin-left:6px; vertical-align:middle;}
+body.tv .padbtn{font-size:30px; padding:4px 14px; margin-left:10px;}
 /* ===== TV / big-screen host mode (playing on a television) ===== */
 body.tv .wrap{max-width:1600px; padding:28px 44px 54px;}
 body.tv .tvtoggle{display:inline-block;}
@@ -138,7 +140,7 @@ body.tv #results .brand{font-size:clamp(46px,7vw,86px);} body.tv #results .sword
 <body>
 <div class="wrap">
   <button class="btn ghost sm tvtoggle" id="tvToggle" onclick="toggleTV()">📺 TV mode</button>
-  <div class="gphint" id="gpHint">🎮 D-pad to move · Ⓐ to select</div>
+  <div class="gphint" id="gpHint">🎮 Ⓐ Ⓑ Ⓧ Ⓨ = your answer · D-pad + Ⓐ in menus · ☰ Menu: host advances</div>
 
   <!-- SETUP NEEDED -->
   <section id="setup" class="screen">
@@ -276,12 +278,38 @@ function renderJoinQR(code){
   }catch(e){ wrap.style.display='none'; }
 }
 
-/* ===== Xbox controller navigation: D-pad / stick moves focus, A selects ===== */
+/* ===== COUCH players: each extra Xbox controller is its own player on the TV ===== */
+var PADS={}, PAD_ANY=false, PADGLYPH=['Ⓐ','Ⓑ','Ⓧ','Ⓨ'];   // face buttons A/B/X/Y -> options 1/2/3/4
+function couchOn(){ return PAD_ANY; }
+function freePadColor(){ var u={}; Object.keys(HOST.players||{}).forEach(function(id){ u[(HOST.players[id]||{}).color]=1; }); return COLORS.filter(function(x){ return !u[x]; })[0]||pick(COLORS); }
+function ensurePadPlayer(index){                      // controller 0 = the host player; 1..3 = couch players
+  if(!ROOM || index===0 || PADS[index]) return;
+  var ppid=HOST.id+'_pad'+index, nm='Player '+(index+1);
+  PADS[index]={ pid:ppid, name:nm, answeredQi:-1 };
+  db.ref('rooms/'+ROOM+'/players/'+ppid).set({ name:nm, color:freePadColor(), score:0, isPad:true, joinedAt:firebase.database.ServerValue.TIMESTAMP });
+}
+function padAnswer(index, optIdx){
+  if(!inQuestion() || optIdx<0 || optIdx>3) return;
+  if(index===0){ hostAnswer(optIdx); return; }        // the host answers via their own controller
+  var p=PADS[index]; if(!p){ ensurePadPlayer(index); p=PADS[index]; } if(!p) return;
+  if(p.answeredQi===HOST.qi) return; p.answeredQi=HOST.qi;
+  db.ref('rooms/'+ROOM+'/answers/'+HOST.qi+'/'+p.pid).set({ choice:optIdx, ms:Date.now()-(HOST._shownAt||Date.now()) });
+  lockFx();
+}
+function inQuestion(){ var s=document.querySelector('.screen.active'); return !!(s && s.id==='hostPlay' && HOST.phase==='question'); }
+function hostPrimary(){   // the host's one "advance" button (☰ Menu): Start / Reveal / Next / New game by context
+  var s=document.querySelector('.screen.active'); if(!s) return; var id=s.id, btn=null;
+  if(id==='hostLobby') btn=$('#startBtn'); else if(id==='hostPlay') btn=$('#hAction'); else if(id==='results') btn=s.querySelector('button');
+  if(btn && !btn.disabled) btn.click();
+}
+
+/* ===== Xbox controller: menus = D-pad move + A select; question = face buttons answer ===== */
 var GP=(function(){
   var active=false, prev={};
   function focusables(){ var scr=document.querySelector('.screen.active'); if(!scr) return []; return Array.prototype.slice.call(scr.querySelectorAll('button:not([disabled]), input, [tabindex]')).filter(function(el){ return el.offsetParent!==null; }); }
   function cur(){ var list=focusables(); var f=document.querySelector('.gpfocus'); if(f && list.indexOf(f)>=0) return f; if(list.indexOf(document.activeElement)>=0) return document.activeElement; return null; }
   function setGp(el){ Array.prototype.forEach.call(document.querySelectorAll('.gpfocus'),function(e){e.classList.remove('gpfocus');}); if(el){ el.classList.add('gpfocus'); try{el.focus();}catch(e){} } }
+  function clearGp(){ Array.prototype.forEach.call(document.querySelectorAll('.gpfocus'),function(e){e.classList.remove('gpfocus');}); }
   function move(dx,dy){ var list=focusables(); if(!list.length) return; var c=cur(); if(!c){ setGp(list[0]); return; }
     var cr=c.getBoundingClientRect(), cx=cr.left+cr.width/2, cy=cr.top+cr.height/2, best=null, bs=1e12;
     list.forEach(function(el){ if(el===c)return; var r=el.getBoundingClientRect(), ex=r.left+r.width/2, ey=r.top+r.height/2, ddx=ex-cx, ddy=ey-cy;
@@ -292,18 +320,31 @@ var GP=(function(){
   }
   function edge(k,now,fn){ if(now&&!prev[k]) fn(); prev[k]=now; }
   function tick(){ if(!active) return;
-    var pads=navigator.getGamepads?navigator.getGamepads():[], gp=null, i;
-    for(i=0;i<pads.length;i++){ if(pads[i]){ gp=pads[i]; break; } }
-    if(gp){ var b=gp.buttons||[], ax=gp.axes||[];
-      var up=(b[12]&&b[12].pressed)||ax[1]<-0.5, dn=(b[13]&&b[13].pressed)||ax[1]>0.5, lf=(b[14]&&b[14].pressed)||ax[0]<-0.5, rt=(b[15]&&b[15].pressed)||ax[0]>0.5, A=(b[0]&&b[0].pressed);
-      edge('u',up,function(){move(0,-1);}); edge('d',dn,function(){move(0,1);}); edge('l',lf,function(){move(-1,0);}); edge('r',rt,function(){move(1,0);});
-      edge('a',A,function(){ var c=cur(); if(c){ if(c.tagName==='INPUT'){ try{c.focus();}catch(e){} } else c.click(); } });
+    var pads=navigator.getGamepads?navigator.getGamepads():[], i, anyPad=false, q=inQuestion();
+    for(i=0;i<pads.length && i<4;i++){
+      var gp=pads[i]; if(!gp) continue; anyPad=true;
+      var b=gp.buttons||[], ax=gp.axes||[];
+      if(ROOM && i>0) ensurePadPlayer(i);
+      if(q){
+        for(var fb=0; fb<4; fb++){ edge(i+'f'+fb, !!(b[fb]&&b[fb].pressed), (function(ii,bb){ return function(){ padAnswer(ii,bb); }; })(i,fb)); }
+        if(i===0) edge('adv', !!((b[9]&&b[9].pressed)||(b[5]&&b[5].pressed)), hostPrimary);
+      } else {
+        var up=(b[12]&&b[12].pressed)||ax[1]<-0.5, dn=(b[13]&&b[13].pressed)||ax[1]>0.5, lf=(b[14]&&b[14].pressed)||ax[0]<-0.5, rt=(b[15]&&b[15].pressed)||ax[0]>0.5;
+        edge(i+'u',up,function(){move(0,-1);}); edge(i+'d',dn,function(){move(0,1);}); edge(i+'l',lf,function(){move(-1,0);}); edge(i+'r',rt,function(){move(1,0);});
+        edge(i+'A',!!(b[0]&&b[0].pressed),function(){ var c=cur(); if(c){ if(c.tagName==='INPUT'){ try{c.focus();}catch(e){} } else c.click(); } });
+        if(i===0) edge('adv', !!(b[9]&&b[9].pressed), hostPrimary);
+      }
     }
+    PAD_ANY = !!(ROOM && anyPad);
     requestAnimationFrame(tick);
   }
-  function onScreen(){ if(!active) return; setTimeout(function(){ var l=focusables(); var pri=l.filter(function(e){return /btn|opt|partcell/.test(e.className||'');})[0]||l[0]; if(pri) setGp(pri); }, 70); }
+  function onScreen(){ if(!active) return; clearGp(); if(inQuestion()) return;   // during a question, face buttons answer — no focus ring
+    setTimeout(function(){ if(inQuestion()) return; var l=focusables(); var pri=l.filter(function(e){return /btn|opt|partcell/.test(e.className||'');})[0]||l[0]; if(pri) setGp(pri); }, 70); }
   function start(){ if(active) return; active=true; var h=$('#gpHint'); if(h) h.style.display='block'; onScreen(); requestAnimationFrame(tick); }
-  if('ongamepadconnected' in window){ window.addEventListener('gamepadconnected', start); }
+  if('ongamepadconnected' in window){
+    window.addEventListener('gamepadconnected', start);
+    window.addEventListener('gamepaddisconnected', function(e){ var i=e.gamepad.index; if(ROOM && PADS[i]){ try{ db.ref('rooms/'+ROOM+'/players/'+PADS[i].pid).remove(); }catch(err){} delete PADS[i]; } });
+  }
   return { start:start, onScreen:onScreen, move:move, isActive:function(){return active;} };
 })();
 function toast(m){ var t=$('#toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2000); }
@@ -561,7 +602,8 @@ function nextQuestion(){
   $('#hRoom').textContent="Room "+ROOM; $('#hProg').textContent="Q "+(HOST.qi+1)+"/"+TOTAL_Q;
   var hc=$('#hCat'); if(hc){ if(HOST.categoryName){ hc.textContent='📂 '+HOST.categoryName; hc.style.display=''; } else { hc.style.display='none'; } }
   $('#hQ').textContent=q.q; $('#hRef').textContent=q.ref?("📖 "+q.ref):"";
-  $('#hOpts').innerHTML=opts.map(function(o,i){return '<button class="opt '+OPTCLS[i]+'" onclick="hostAnswer('+i+')"><span class="lab">'+OPTLAB[i]+'</span> '+esc(o)+'</button>';}).join('');
+  Object.keys(PADS).forEach(function(k){ PADS[k].answeredQi=-1; });   // fresh question: couch players can answer again
+  $('#hOpts').innerHTML=opts.map(function(o,i){return '<button class="opt '+OPTCLS[i]+'" onclick="hostAnswer('+i+')"><span class="lab">'+OPTLAB[i]+'</span> '+esc(o)+(couchOn()?' <span class="padbtn">'+PADGLYPH[i]+'</span>':'')+'</button>';}).join('');
   $('#hMine').className='mine'; $('#hMine').textContent='';
   $('#hReveal').style.display="none"; $('#hAction').textContent="Reveal answer ▶️";
   renderAnswered($('#hStatus'), HOST.players, {});
