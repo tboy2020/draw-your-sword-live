@@ -96,6 +96,7 @@ a{color:var(--ink-soft);}
 .partcell.prev,.partcell[disabled]{opacity:.55; cursor:default; box-shadow:0 4px 0 rgba(0,0,0,.22);}
 .partcell.prev:active{transform:none;}
 .catpill{background:rgba(255,255,255,.1); border-radius:999px; padding:6px 12px; font-weight:800; font-size:13px;}
+.pill,.catpill{max-width:44vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 </style>
 </head>
 <body>
@@ -115,7 +116,7 @@ a{color:var(--ink-soft);}
     <div class="tag">Play together, online</div>
     <div class="sword">⚔️📖</div>
     <h1 class="brand">Draw Your Sword — Live</h1>
-    <p class="lead">One host starts a game, everyone else joins with a code on their own phone. Same question for all — fastest right answers win! 🏆</p>
+    <p class="lead">One host starts a game, everyone else joins with a code on their own phone. Same question for all — most right answers win! 🏆</p>
     <button class="btn big" onclick="goHost()">🎤 Host a game</button>
     <button class="btn ghost big" onclick="show('join')">📲 Join a game</button>
     <footer>Up to ~20 players · works on any phone · real-time · Glory to God alone 🙏</footer>
@@ -252,7 +253,7 @@ function renderAnswered(el, playersObj, answeredObj){
     players.sort(function(a,b){ return (b.isHost?1:0)-(a.isHost?1:0); });  // host first
     var chips=players.map(function(p){
       var yes=!!answered[p.id];
-      return '<span class="achip '+(yes?'yes':'no')+'"'+(yes?' style="background:'+p.color+'"':'')+'>'
+      return '<span class="achip '+(yes?'yes':'no')+'"'+(yes?' style="background:'+p.color+';color:'+textOn(p.color)+'"':'')+'>'
         + '<span class="adot" style="background:'+p.color+';'+(yes?'':'opacity:.5')+'"></span>'
         + esc(p.name)+(p.isHost?' 🎤':'')
         + (yes?' <span class="tick">✓</span>':' <span style="opacity:.7">…</span>')
@@ -386,7 +387,10 @@ function initFB(){
 }
 
 /* ---------- identity ---------- */
-function pid(){ var k="dys_live_pid"; var v=null; try{v=sessionStorage.getItem(k);}catch(e){} if(!v){ v="p"+Math.random().toString(36).slice(2,9); try{sessionStorage.setItem(k,v);}catch(e){} } return v; }
+var _PID=null;
+function pid(){ if(_PID) return _PID; var k="dys_live_pid"; var v=null; try{v=sessionStorage.getItem(k);}catch(e){} if(!v){ v="p"+Math.random().toString(36).slice(2,9); try{sessionStorage.setItem(k,v);}catch(e){} } _PID=v; return v; }
+// readable text color for a given chip background (gold/yellow need dark text)
+function textOn(bg){ try{ var c=String(bg).replace('#',''); var r=parseInt(c.substr(0,2),16),g=parseInt(c.substr(2,2),16),b=parseInt(c.substr(4,2),16); return (r*299+g*587+b*114)/1000>150?'#2a2208':'#fff'; }catch(e){ return '#fff'; } }
 function genCode(){ var L="ABCDEFGHJKLMNPQRSTUVWXYZ"; var s=""; for(var i=0;i<4;i++)s+=L[Math.floor(Math.random()*L.length)]; return s; }
 
 /* ---------- question bank (host only) ---------- */
@@ -397,6 +401,7 @@ function loadBank(){ return fetch('data/content.json').then(function(r){return r
 var ROOM=null, HOST={ id:pid(), qi:-1, used:{}, answerIndex:-1, answerText:"", phase:"lobby", players:{}, answeredQi:-1, chosen:null, name:"Host" };
 function goHost(){
   if(!FBOK){ show('setup'); return; }
+  if(HOST._starting) return; HOST._starting=true;   // ignore a second tap during the async load/create
   show('home'); // brief
   loadBank().then(function(){
     ROOM=genCode();
@@ -417,7 +422,7 @@ function goHost(){
       HOST.players=snap.val()||{};
       var ids=Object.keys(HOST.players);
       $('#plCount').textContent=ids.length;
-      $('#lobbyPlayers').innerHTML=ids.map(function(id){var p=HOST.players[id]; return '<span class="pchip" style="background:'+(p.color||'#888')+'">'+esc(p.name)+(p.isHost?' 🎤':'')+'</span>';}).join('');
+      $('#lobbyPlayers').innerHTML=ids.map(function(id){var p=HOST.players[id]; return '<span class="pchip" style="background:'+(p.color||'#888')+';color:'+textOn(p.color||'#888')+'">'+esc(p.name)+(p.isHost?' 🎤':'')+'</span>';}).join('');
       $('#startBtn').disabled=ids.length<1;
       if(HOST.phase==='question') renderAnswered($('#hStatus'), HOST.players, (HOST.allAnswers&&HOST.allAnswers[HOST.qi])||{});
       renderLiveLeaderboards();
@@ -433,21 +438,25 @@ function goHost(){
 function hostStart(){
   if(!ROOM) return;
   var ids=Object.keys(HOST.players||{}); if(!ids.length){ toast("Waiting for players…"); return; }
-  CHOOSE_SPUN=null; HOST.category=null; HOST.categoryName=null; HOST.phase='choosing';
+  CHOOSE_SPUN=null; CHOOSE_DONE=false; HOST.category=null; HOST.categoryName=null; HOST.phase='choosing';
   var chId=ids[Math.floor(Math.random()*ids.length)];
   var chName=(HOST.players[chId]||{}).name||'Player';
   db.ref('rooms/'+ROOM).update({ state:'choosing', chooser:{id:chId, name:chName}, category:null, categoryName:null });
+  // never let the room hang if the chosen person goes silent / drops — default to All the Bible after 30s
+  if(HOST._chooseTimer) clearTimeout(HOST._chooseTimer);
+  HOST._chooseTimer=setTimeout(function(){ if(HOST.phase==='choosing' && !HOST.category){ choosePart('ALL'); } }, 30000);
   // react the moment the chosen person (host OR a guest) picks a part
   db.ref('rooms/'+ROOM+'/category').off();
   db.ref('rooms/'+ROOM+'/category').on('value', function(snap){
     var cat=snap.val();
-    if(cat && HOST.phase==='choosing'){ db.ref('rooms/'+ROOM+'/category').off(); HOST.category=cat; HOST.categoryName=catName(cat); startQuestions(); }
+    if(cat && HOST.phase==='choosing'){ if(HOST._chooseTimer){clearTimeout(HOST._chooseTimer);HOST._chooseTimer=null;} db.ref('rooms/'+ROOM+'/category').off(); HOST.category=cat; HOST.categoryName=catName(cat); startQuestions(); }
   });
   enterChoosing({ chooser:{id:chId, name:chName}, players:HOST.players }, true);
 }
 function startQuestions(){ HOST.qi=-1; HOST.used={}; nextQuestion(); }
 function nextQuestion(){
   lockHostAction(false);   // defensive: never carry a stuck disabled Next into a new question
+  if(HOST._chooseTimer){ clearTimeout(HOST._chooseTimer); HOST._chooseTimer=null; }
   HOST.qi++;
   if(HOST.qi>=TOTAL_Q){ hostEndGame(); return; }
   // pick an unused question from the chosen Bible part (or the whole Bible)
@@ -479,17 +488,19 @@ function hostAnswer(i){
   lockFx();
   var m=$('#hMine'); if(m){ m.className='mine in'; m.textContent='✓ You’re in — waiting for others…'; }
 }
-function hostAction(){ if(HOST.phase==='question'){ hostReveal(); } else { var b=$('#hAction'); if(b&&b.disabled)return; shutUp(); nextQuestion(); } }
+function hostAction(){ if(HOST.phase==='question'){ hostReveal(); } else { var b=$('#hAction'); if(b&&b.disabled)return; if(Date.now()-(HOST._revealAt||0)<600) return; shutUp(); nextQuestion(); } }
 function hostReveal(){
-  HOST.phase='reveal';
+  HOST.phase='reveal'; HOST._revealAt=Date.now();
   var ans=(HOST.allAnswers&&HOST.allAnswers[HOST.qi])||{};
   // score players
   var updates={}, counts=[0,0,0,0];
+  Object.keys(HOST.players||{}).forEach(function(id){ updates['players/'+id+'/last']=0; }); // clear last for everyone, so a skipper never sees a stale "Correct"
   Object.keys(ans).forEach(function(id){
     var a=ans[id]; if(a.choice>=0&&a.choice<4)counts[a.choice]++;
+    if(!HOST.players[id]) return;                 // a player who LEFT — don't resurrect them as a nameless ghost
     var correct=(a.choice===HOST.answerIndex);
     var pts=correct ? 1 : 0; // one point per correct answer — simple "most right wins"
-    var cur=(HOST.players[id]&&HOST.players[id].score)||0;
+    var cur=(HOST.players[id].score)||0;
     updates['players/'+id+'/score']=cur+pts;
     updates['players/'+id+'/last']=correct?pts:0;
   });
@@ -531,7 +542,7 @@ function leaderboardHTML(arr){
 
 /* ============ SPIN + PART PICKER (shared by host & guests) ============ */
 function myRoom(){ return ROOM || ME.code; }
-var CHOOSE_SPUN=null;
+var CHOOSE_SPUN=null, CHOOSE_DONE=false;
 /* Cycle the players' names, decelerating, and land on `target`. Visual only — each
    device spins locally but lands on the same (already-decided) chooser. */
 function spinTo(names, target, onDone){
@@ -545,7 +556,7 @@ function spinTo(names, target, onDone){
   var i=0, d=55;
   function step(){
     el.textContent=seq[i]; i++;
-    if(i>=seq.length){ el.textContent=target; buzz(80); if(onDone)onDone(); return; }
+    if(i>=seq.length){ el.textContent=target; if($('#choose').classList.contains('active')) buzz(80); if(onDone)onDone(); return; }
     if(seq.length-i<10){ d*=1.22; }           // slow down at the end
     setTimeout(step, Math.min(d,420));
   }
@@ -556,15 +567,15 @@ function enterChoosing(r, isHost){
   if(r && r.category){ $('#spinSub').textContent='Starting the game… ✨'; $('#chooseBody').innerHTML=''; return; } // already picked
   var chooser=(r&&r.chooser)||{};
   var names=playersArr((r&&r.players)||{}).map(function(p){return p.name;});
-  if(CHOOSE_SPUN===chooser.id){ afterSpin(chooser, isHost); return; }   // don't re-spin on later snapshots
-  CHOOSE_SPUN=chooser.id;
+  if(CHOOSE_SPUN===chooser.id){ if(CHOOSE_DONE) afterSpin(chooser, isHost); return; }   // don't re-render while the spin is still running
+  CHOOSE_SPUN=chooser.id; CHOOSE_DONE=false;
   $('#spinSub').textContent='Spinning…'; $('#chooseBody').innerHTML='';
-  spinTo(names, chooser.name||'…', function(){ afterSpin(chooser, isHost); });
+  spinTo(names, chooser.name||'…', function(){ CHOOSE_DONE=true; afterSpin(chooser, isHost); });
 }
 function afterSpin(chooser, isHost){
   var amChooser=(chooser.id===pid());
   $('#spinSub').textContent = amChooser ? '🎉 You were chosen — pick the Bible part!'
-    : ('🎉 '+esc(chooser.name||'Someone')+' is choosing the Bible part…');
+    : ('🎉 '+(chooser.name||'Someone')+' is choosing the Bible part…');
   var body=$('#chooseBody');
   if(amChooser){ body.innerHTML=partGridHTML(false); }                       // the chooser can tap
   else if(isHost){ body.innerHTML=partGridHTML(true)+'<button class="btn ghost sm" onclick="hostOverridePick()" style="margin-top:2px">I’ll pick for the room</button>'; }
@@ -593,19 +604,27 @@ function hostOverridePick(){ $('#spinSub').textContent='Pick the Bible part for 
 var ME={ code:null, name:null, score:0, answeredQi:-1 };
 function doJoin(){
   if(!FBOK){ show('setup'); return; }
+  if(ME.joining) return;                                // ignore a double-tap during the async lookup
   var code=($('#codeIn').value||"").toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);
   var name=($('#nameIn').value||"").trim().slice(0,14);
   if(code.length!==4){ toast("Enter the 4-letter code"); return; }
   if(!name){ toast("Enter your name"); return; }
+  ME.joining=true;
   db.ref('rooms/'+code).once('value').then(function(snap){
-    if(!snap.exists()){ toast("No game with that code"); return; }
+    if(!snap.exists()){ ME.joining=false; toast("No game with that code"); return; }
     ME.code=code; ME.name=name;
-    var color=pick(COLORS);
-    db.ref('rooms/'+code+'/players/'+pid()).set({ name:name, color:color, score:0, joinedAt:firebase.database.ServerValue.TIMESTAMP });
-    db.ref('rooms/'+code+'/players/'+pid()).onDisconnect().remove();
-    $('#gName').textContent=name;
-    watchRoomAsGuest(code);
-    show('guestPlay'); $('#gWait').textContent="Joined! Waiting for the host to start… ✨"; $('#gQ').textContent="Get ready!"; $('#gOpts').innerHTML="";
+    var pref=db.ref('rooms/'+code+'/players/'+pid());
+    pref.once('value').then(function(ps){
+      var prev=ps.val()||{};
+      var myColor=prev.color||pick(COLORS); ME.score=prev.score||0;
+      pref.update({ name:name, color:myColor, score:prev.score||0, joinedAt:firebase.database.ServerValue.TIMESTAMP }); // .update keeps a surviving score on reload/rejoin
+      pref.onDisconnect().remove();
+      // if the phone sleeps/backgrounds and the socket drops, re-assert our node (with our last-known score) on reconnect
+      db.ref('.info/connected').on('value', function(s){ if(s.val()===true){ pref.onDisconnect().remove(); pref.update({ name:ME.name, color:myColor, score:ME.score||0 }); } });
+      $('#gName').textContent=name;
+      watchRoomAsGuest(code);
+      show('guestPlay'); $('#gWait').textContent="Joined! Waiting for the host to start… ✨"; $('#gQ').textContent="Get ready!"; $('#gOpts').innerHTML="";
+    });
   });
 }
 function watchRoomAsGuest(code){
@@ -652,6 +671,7 @@ function guestReveal(r){
   if(!r.reveal) return;
   var gm=$('#gMine'); if(gm){ gm.className='mine'; gm.textContent=''; }   // #gFeed shows the result now
   var gs=$('#gStatus'); if(gs) gs.innerHTML='';
+  var gc=$('#gCat'); if(gc){ var cn=(r.current&&r.current.cat)||''; if(cn){ gc.textContent='📂 '+cn; gc.style.display=''; } }  // show the part even if you joined during a reveal
   var ci=r.reveal.correctIndex;
   if(ME.chosen!=null){ var ob=$$('#gOpts .opt')[ME.chosen]; if(ob)ob.classList.add('chosen'); }  // keep YOUR pick highlighted
   $$('#gOpts .opt').forEach(function(b,j){ b.disabled=true; if(j===ci){ b.classList.remove('dim'); b.classList.add('right'); } else if(!b.classList.contains('chosen'))b.classList.add('dim'); });
@@ -666,7 +686,7 @@ function guestReveal(r){
   $('#gReveal').style.display=""; $('#gLB').innerHTML=leaderboardHTML(Object.keys(r.players||{}).map(function(id){return r.players[id];}));
   $('#gScore').textContent=(me.score||0)+" right";
 }
-function guestEnd(r){ showResults(r); }
+function guestEnd(r){ try{ if(ME.code) db.ref('rooms/'+ME.code).off('value'); }catch(e){} showResults(r); }   // stop listening so 'New game'/close doesn't bounce us off the final board
 
 /* ---------- results ---------- */
 var RESULTS_SHOWN=false;
