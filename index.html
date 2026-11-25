@@ -157,6 +157,9 @@ body.tv #results .brand{font-size:clamp(46px,7vw,86px);} body.tv #results .sword
 .pdot{width:12px; height:12px; border-radius:50%; flex:0 0 auto;}
 .nameedit{width:9ch; background:transparent; border:0; color:#fff; font-family:var(--font); font-weight:800; font-size:14px; padding:2px; outline:none;}
 .nameedit::placeholder{color:rgba(255,255,255,.55);}
+.nameclr{background:none; border:0; color:rgba(255,255,255,.55); cursor:pointer; font-size:14px; line-height:1; padding:0 2px; -webkit-tap-highlight-color:transparent;}
+.nameclr:hover,.nameclr:active{color:#fff;}
+body.tv .nameclr{font-size:20px; padding:0 4px;}
 .pedit:focus-within{border-color:#fff; background:rgba(255,255,255,.18);}
 body.tv .pedit{padding:7px 14px 7px 16px; gap:9px;} body.tv .nameedit{font-size:21px; width:10ch;} body.tv .pdot{width:16px; height:16px;}
 </style>
@@ -345,7 +348,7 @@ var GP=(function(){
   function edge(k,now,fn){ if(now&&!prev[k]) fn(); prev[k]=now; }
   function tick(){ if(!active) return;
     var pads=navigator.getGamepads?navigator.getGamepads():[], i, anyPad=false, q=inQuestion();
-    for(i=0;i<pads.length && i<4;i++){
+    for(i=0;i<pads.length && i<8;i++){   // Xbox Series S supports up to 8 controllers -> up to 8 couch players
       var gp=pads[i]; if(!gp) continue; anyPad=true;
       var b=gp.buttons||[], ax=gp.axes||[];
       if(ROOM && i>0) ensurePadPlayer(i);
@@ -573,20 +576,23 @@ function renderLobby(players){
   var sig=ids.slice().sort().join('|');
   if(sig!==HOST._lobbySig){                 // players added/removed -> rebuild (editable names for everyone but the host)
     HOST._lobbySig=sig;
-    box.innerHTML=ids.map(function(id){ var p=players[id]||{}, c=p.color||'#888';
-      if(p.isHost) return '<span class="pchip" style="background:'+c+';color:'+textOn(c)+'">'+esc(p.name||'Host')+' 🎤</span>';
-      return '<label class="pedit"><span class="pdot" style="background:'+c+'"></span>'+
-             '<input class="nameedit" data-pid="'+id+'" maxlength="14" value="'+esc(p.name||'')+'" placeholder="name" autocomplete="off" spellcheck="false"></label>';
+    box.innerHTML=ids.map(function(id){ var p=players[id]||{}, c=p.color||'#888', nm=p.name||'', m=id.match(/_pad(\d+)$/), def=m?('Player '+(parseInt(m[1],10)+1)):'Player', isDef=(!nm||/^Player \d+$/.test(nm));
+      if(p.isHost) return '<span class="pchip" style="background:'+c+';color:'+textOn(c)+'">'+esc(nm||'Host')+' 🎤</span>';
+      return '<span class="pedit"><span class="pdot" style="background:'+c+'"></span>'+
+             '<input class="nameedit" data-pid="'+id+'" data-def="'+esc(def)+'" maxlength="14" value="'+(isDef?'':esc(nm))+'" placeholder="'+esc(isDef?(nm||def):'name')+'" autocomplete="off" spellcheck="false">'+
+             '<button type="button" class="nameclr" tabindex="-1" title="Clear name">✕</button></span>';
     }).join('');
     Array.prototype.forEach.call(box.querySelectorAll('.nameedit'),function(inp){
-      inp.oninput=function(){ var v=(this.value||'').trim().slice(0,14), pid=this.getAttribute('data-pid');
-        if(ROOM) db.ref('rooms/'+ROOM+'/players/'+pid+'/name').set(v||'Player'); };
+      inp.oninput=function(){ var v=(this.value||'').trim().slice(0,14), pd=this.getAttribute('data-pid'), def=this.getAttribute('data-def')||'Player';
+        if(ROOM) db.ref('rooms/'+ROOM+'/players/'+pd+'/name').set(v||def); };
     });
-  } else {                                  // same players -> refresh only the inputs nobody is typing in
-    Array.prototype.forEach.call(box.querySelectorAll('.nameedit'),function(inp){
-      var p=players[inp.getAttribute('data-pid')]; if(p && document.activeElement!==inp) inp.value=p.name||'';
+    Array.prototype.forEach.call(box.querySelectorAll('.nameclr'),function(btn){
+      btn.onclick=function(){ var inp=this.previousElementSibling; if(!inp)return; inp.value='';
+        var pd=inp.getAttribute('data-pid'), def=inp.getAttribute('data-def')||'Player';
+        if(ROOM) db.ref('rooms/'+ROOM+'/players/'+pd+'/name').set(def); try{inp.focus();}catch(e){} };
     });
   }
+  // NB: no "else" re-sync — never overwrite the host's own input while they type (that was blocking backspace)
 }
 function goHost(){
   if(!FBOK){ show('setup'); return; }
