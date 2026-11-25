@@ -132,7 +132,9 @@ body.tv #hostPlay .qtext{font-size:clamp(23px,2.7vw,44px); line-height:1.13;}
 body.tv #hostPlay .qref{font-size:20px;}
 body.tv #hostPlay .opts{gap:clamp(8px,1.1vh,18px); max-width:1240px; margin:clamp(6px,0.9vh,14px) auto;}
 body.tv #hostPlay .opt{font-size:clamp(22px,2.5vw,38px); min-height:clamp(58px,8.4vh,136px); border-radius:22px;}
-body.tv #hostPlay{padding-bottom:54px;}  /* clear the fixed controller-hint bar */
+body.tv #hostPlay{padding-bottom:70px;}  /* clear the fixed controller-hint bar */
+body.tv .topbar{padding-right:150px;}    /* keep the Q-count clear of the fixed 📺 TV toggle */
+body.tv .tvtoggle{top:12px; right:14px; font-size:15px;}
 body.tv #hostPlay .opt .lab{font-size:28px; padding:4px 16px;}
 body.tv #hostPlay .mine{font-size:30px;}
 body.tv #hostPlay .anslabel{font-size:18px;} body.tv #hostPlay .achip{font-size:22px; padding:11px 20px;}
@@ -151,7 +153,7 @@ body.tv #results .brand{font-size:clamp(46px,7vw,86px);} body.tv #results .sword
 <body>
 <div class="wrap">
   <button class="btn ghost sm tvtoggle" id="tvToggle" onclick="toggleTV()">📺 TV mode</button>
-  <div class="gphint" id="gpHint">🎮 Press your colour Ⓐ Ⓑ Ⓧ Ⓨ to answer · ☰ Menu: host reveals / next · Ⓑ = back into the game</div>
+  <div class="gphint" id="gpHint">🎮 Press your colour to answer · ☰ Menu = reveal / next · Ⓑ = back</div>
 
   <!-- SETUP NEEDED -->
   <section id="setup" class="screen">
