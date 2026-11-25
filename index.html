@@ -119,25 +119,27 @@ a{color:var(--ink-soft);}
 .padbtn{display:inline-block; background:rgba(0,0,0,.3); border-radius:9px; padding:2px 9px; font-size:16px; margin-left:6px; vertical-align:middle;}
 body.tv .padbtn{font-size:30px; padding:4px 14px; margin-left:10px;}
 /* ===== TV / big-screen host mode (playing on a television) ===== */
-body.tv .wrap{max-width:1600px; padding:28px 44px 54px;}
+body.tv .wrap{max-width:1600px; padding:clamp(8px,1.3vh,18px) clamp(30px,4vw,60px) clamp(8px,1.2vh,18px);}
+body.tv .gphint{font-size:clamp(13px,1.5vw,19px); padding:10px 16px;}
 body.tv .tvtoggle{display:inline-block;}
 body.tv #hostLobby .code{font-size:clamp(72px,13vw,150px);}
 body.tv #hostLobby .lead,body.tv #hostLobby .tag{font-size:clamp(18px,2vw,26px);}
 body.tv .qrbox img,body.tv .qrbox canvas{width:300px; height:300px;}
 body.tv .qrcap{font-size:20px;}
 body.tv .pchip{font-size:20px; padding:9px 18px;}
-body.tv #hostPlay .qcard{padding:34px 30px;}
-body.tv #hostPlay .qtext{font-size:clamp(34px,4.3vw,56px);}
+body.tv #hostPlay .qcard{padding:clamp(12px,1.8vh,26px) 30px; margin:3px 0 6px;}
+body.tv #hostPlay .qtext{font-size:clamp(23px,2.7vw,44px); line-height:1.13;}
 body.tv #hostPlay .qref{font-size:20px;}
-body.tv #hostPlay .opts{gap:22px; max-width:1200px; margin:20px auto;}
-body.tv #hostPlay .opt{font-size:clamp(26px,3vw,40px); min-height:150px; border-radius:26px;}
+body.tv #hostPlay .opts{gap:clamp(8px,1.1vh,18px); max-width:1240px; margin:clamp(6px,0.9vh,14px) auto;}
+body.tv #hostPlay .opt{font-size:clamp(22px,2.5vw,38px); min-height:clamp(58px,8.4vh,136px); border-radius:22px;}
+body.tv #hostPlay{padding-bottom:54px;}  /* clear the fixed controller-hint bar */
 body.tv #hostPlay .opt .lab{font-size:28px; padding:4px 16px;}
 body.tv #hostPlay .mine{font-size:30px;}
 body.tv #hostPlay .anslabel{font-size:18px;} body.tv #hostPlay .achip{font-size:22px; padding:11px 20px;}
 body.tv #hostPlay .acount{font-size:34px;} body.tv #hostPlay .acount b{font-size:48px;} body.tv #hostPlay .abar{height:22px; max-width:640px;}
 body.tv #hostPlay .pill,body.tv #hostPlay .catpill{font-size:20px; padding:9px 18px; max-width:38vw;}
 body.tv #hostPlay .hearbtn{font-size:20px; padding:12px 24px;}
-body.tv #hostPlay #hAction,body.tv #hostLobby #startBtn{font-size:30px; padding:22px 40px; max-width:560px;}
+body.tv #hostPlay #hAction,body.tv #hostLobby #startBtn{font-size:clamp(22px,2.4vw,30px); padding:clamp(10px,1.4vh,18px) 40px; max-width:560px;}
 body.tv #choose .spin{font-size:clamp(50px,8vw,96px);} body.tv #choose .spinsub{font-size:24px;}
 body.tv #choose .partgrid{max-width:1100px; margin:18px auto; gap:16px;}
 body.tv #choose .partcell{padding:22px 12px;} body.tv #choose .partcell .pe{font-size:46px;} body.tv #choose .partcell b{font-size:22px;} body.tv #choose .partcell small{font-size:15px;}
@@ -149,7 +151,7 @@ body.tv #results .brand{font-size:clamp(46px,7vw,86px);} body.tv #results .sword
 <body>
 <div class="wrap">
   <button class="btn ghost sm tvtoggle" id="tvToggle" onclick="toggleTV()">📺 TV mode</button>
-  <div class="gphint" id="gpHint">🎮 Ⓐ Ⓑ Ⓧ Ⓨ = your answer · D-pad + Ⓐ in menus · ☰ Menu: host advances</div>
+  <div class="gphint" id="gpHint">🎮 Press your colour Ⓐ Ⓑ Ⓧ Ⓨ to answer · ☰ Menu: host reveals / next · Ⓑ = back into the game</div>
 
   <!-- SETUP NEEDED -->
   <section id="setup" class="screen">
@@ -349,7 +351,9 @@ var GP=(function(){
   }
   function onScreen(){ if(!active) return; clearGp(); if(inQuestion()) return;   // during a question, face buttons answer — no focus ring
     setTimeout(function(){ if(inQuestion()) return; var l=focusables(); var pri=l.filter(function(e){return /btn|opt|partcell/.test(e.className||'');})[0]||l[0]; if(pri) setGp(pri); }, 70); }
-  function start(){ if(active) return; active=true; var h=$('#gpHint'); if(h) h.style.display='block'; onScreen(); requestAnimationFrame(tick); }
+  function start(){ if(active) return; active=true;
+    try{localStorage.setItem('dys_live_tv','1');}catch(e){} document.body.classList.add('tv'); try{applyTV();}catch(e){}   // a controller == a TV: force the big layout on
+    var h=$('#gpHint'); if(h) h.style.display='block'; onScreen(); requestAnimationFrame(tick); }
   if('ongamepadconnected' in window){
     window.addEventListener('gamepadconnected', start);
     window.addEventListener('gamepaddisconnected', function(e){ var i=e.gamepad.index; if(ROOM && PADS[i]){ try{ db.ref('rooms/'+ROOM+'/players/'+PADS[i].pid).remove(); }catch(err){} delete PADS[i]; } });
