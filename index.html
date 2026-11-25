@@ -145,8 +145,13 @@ body.tv #hostPlay #hAction,body.tv #hostLobby #startBtn{font-size:clamp(22px,2.4
 body.tv #choose .spin{font-size:clamp(50px,8vw,96px);} body.tv #choose .spinsub{font-size:24px;}
 body.tv #choose .partgrid{max-width:1100px; margin:18px auto; gap:16px;}
 body.tv #choose .partcell{padding:22px 12px;} body.tv #choose .partcell .pe{font-size:46px;} body.tv #choose .partcell b{font-size:22px;} body.tv #choose .partcell small{font-size:15px;}
-body.tv #hostPlay .lb,body.tv #results .lb{max-width:900px; margin:14px auto;}
-body.tv #hostPlay .lbrow,body.tv #results .lbrow{font-size:25px; padding:16px 24px;} body.tv .lbrow b{font-size:28px;} body.tv .dot{width:22px; height:22px;}
+body.tv #hostPlay .lb,body.tv #results .lb{max-width:900px; margin:clamp(6px,1vh,12px) auto;}
+body.tv #hostPlay .lbrow,body.tv #results .lbrow{font-size:clamp(18px,2.1vw,24px); padding:clamp(8px,1.3vh,14px) 22px;} body.tv .lbrow b{font-size:clamp(20px,2.3vw,27px);} body.tv .dot{width:20px; height:20px;}
+/* reveal view: question already read — drop it and shrink so answer + scores + Next fit one page */
+body.tv #hostPlay.revealing .qcard{display:none;}
+body.tv #hostPlay.revealing .opts{margin:clamp(4px,0.8vh,10px) auto;}
+body.tv #hostPlay.revealing .opt{min-height:clamp(46px,6.4vh,90px); font-size:clamp(20px,2.3vw,34px);}
+body.tv #hostPlay.revealing .mine{font-size:clamp(18px,2.2vw,26px); margin:4px 0;}
 body.tv #results .brand{font-size:clamp(46px,7vw,86px);} body.tv #results .sword{font-size:clamp(70px,10vw,120px);}
 .pedit{display:inline-flex; align-items:center; gap:7px; background:rgba(255,255,255,.1); border:2px solid rgba(255,255,255,.22); border-radius:999px; padding:4px 10px 4px 12px; margin:3px;}
 .pdot{width:12px; height:12px; border-radius:50%; flex:0 0 auto;}
@@ -651,6 +656,7 @@ function nextQuestion(){
   var q=pick(avail); HOST.used[q.q]=1;
   var opts=shuffle((q.options||[q.a]).slice(0,4)); if(opts.indexOf(q.a)<0){opts[0]=q.a; opts=shuffle(opts);}
   HOST.answerIndex=opts.indexOf(q.a); HOST.answerText=q.a; HOST.phase='question';
+  var hp0=$('#hostPlay'); if(hp0) hp0.classList.remove('revealing');   // show the question again for the new round
   HOST.curOpts=opts; HOST.answeredQi=-1; HOST.chosen=null; HOST._shownAt=Date.now();
   var payload={ q:q.q, options:opts, ref:q.ref||"", idx:HOST.qi, cat:(HOST.categoryName||""), at:firebase.database.ServerValue.TIMESTAMP };
   db.ref('rooms/'+ROOM).update({ state:"question", qIndex:HOST.qi, current:payload, reveal:null });
@@ -670,13 +676,14 @@ function hostAnswer(i){
   HOST.answeredQi=qi; HOST.chosen=i;
   var ms=Date.now()-(HOST._shownAt||Date.now());
   db.ref('rooms/'+ROOM+'/answers/'+qi+'/'+HOST.id).set({ choice:i, ms:ms });
-  $$('#hOpts .opt').forEach(function(b,j){ b.disabled=true; if(j===i)b.classList.add('chosen'); else b.classList.add('dim'); });
+  // shared TV: do NOT mark the host's chosen tile — that would reveal the answer to everyone. Just the "You're in" check + who's-answered tick.
   lockFx();
   var m=$('#hMine'); if(m){ m.className='mine in'; m.textContent='✓ You’re in — waiting for others…'; }
 }
 function hostAction(){ if(HOST.phase==='question'){ hostReveal(); } else { var b=$('#hAction'); if(b&&b.disabled)return; if(Date.now()-(HOST._revealAt||0)<600) return; shutUp(); nextQuestion(); } }
 function hostReveal(){
   HOST.phase='reveal'; HOST._revealAt=Date.now();
+  var hpR=$('#hostPlay'); if(hpR) hpR.classList.add('revealing');   // compact the board so answer + scores + Next fit one screen
   var ans=(HOST.allAnswers&&HOST.allAnswers[HOST.qi])||{};
   // score players
   var updates={}, counts=[0,0,0,0];
